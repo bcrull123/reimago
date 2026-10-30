@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Reimago",
+      "hasCanvas": false,
+      "bodyTextLen": 1727,
+      "bodyTextHash": "ce8c19010006300759aea350d83c6346d9ef7c932a5a3f31a00924dbde1bd8c0",
+      "bodyTextPrefix": "reimago.ai How it works Legal Contact Let AI: Reimagine Your Web",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Reimago",
+      "hasCanvas": false,
+      "bodyTextLen": 1727,
+      "bodyTextHash": "ce8c19010006300759aea350d83c6346d9ef7c932a5a3f31a00924dbde1bd8c0",
+      "bodyTextPrefix": "reimago.ai How it works Legal Contact Let AI: Reimagine Your Web",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

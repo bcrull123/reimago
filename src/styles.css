@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --color-bg: #ffffff;
+  --color-surface: #e8f2fc;
+  --color-surface-2: #e7eef6;
+  --color-fg: #071525;
+  --color-ink: #001b38;
+  --color-muted: #3e556c;
+  --color-faint: #6d8296;
+  --color-primary: #0068e8;
+  --color-primary-fg: #ffffff;
+  --color-accent: #f89800;
+  --color-border: #d5e0ec;
+  --color-ring: #0068e8;
+  --color-danger: #c45c4a;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-primary);
+    color: #ffffff;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+@utility text-line-hero {
+  font-size: clamp(1.35rem, 6.4vw, 5rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+@utility tracking-eyebrow {
+  letter-spacing: 0.16em;
+}
+
+@keyframes word-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.18em);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.word-enter {
+  animation: word-enter 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes crawl {
+  0% {
+    transform: translateX(-60%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.crawl-bar {
+  animation: crawl 1.4s ease-in-out infinite;
+}
+
+@keyframes clock-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes clock-digit {
+  from {
+    transform: translateX(-50%) rotate(0deg);
+  }
+  to {
+    transform: translateX(-50%) rotate(-360deg);
+  }
+}
+
+.clock-sweep {
+  animation: clock-sweep 2.4s linear infinite;
+}
+
+.clock-digit {
+  animation: clock-digit 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-enter,
+  .crawl-bar,
+  .clock-sweep,
+  .clock-digit {
+    animation: none;
+  }
+
+  .crawl-bar {
+    transform: none;
+  }
+}
