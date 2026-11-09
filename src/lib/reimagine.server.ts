@@ -133,36 +133,53 @@ function normalizeInput(raw: string): URL {
   return url;
 }
 
-async function fetchPage(start: URL, timeoutMs: number): Promise<{ url: string; html: string }> {
+async function fetchPage(start: URL, timeoutMs = 30_000): Promise<{ url: string; html: string }> {
+  const deadline = Date.now() + timeoutMs;
   let current = start;
-  for (let hop = 0; hop < 4; hop += 1) {
+  let hops = 0;
+  let lastError: unknown;
+  while (Date.now() < deadline && hops < 4) {
+    const remaining = deadline - Date.now();
+    if (remaining < 250) break;
     await assertPublic(current);
-    const response = await fetch(current, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: {
-        Accept: "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5",
-        "User-Agent": "ReimagoReimagine/1.0 (+https://reimago.ai)",
-      },
-    });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) throw new Error("That site redirected without a destination.");
-      current = new URL(location, current);
-      current.hash = "";
-      continue;
+    try {
+      const response = await fetch(current, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(remaining),
+        headers: {
+          Accept: "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5",
+          "User-Agent": "ReimagoReimagine/1.0 (+https://reimago.ai)",
+        },
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) throw new Error("That site redirected without a destination.");
+        current = new URL(location, current);
+        current.hash = "";
+        hops += 1;
+        if (hops >= 4) throw new Error("That site redirected too many times.");
+        continue;
+      }
+      if (!response.ok) throw new Error(`That site responded with status ${response.status}.`);
+      const type = response.headers.get("content-type") ?? "";
+      if (type && !/text\/html|application\/xhtml\+xml|text\/plain/i.test(type)) {
+        throw new Error("That address did not return a web page.");
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const html = bytes.subarray(0, 500_000).toString("utf8");
+      if (!html.trim()) throw new Error("That site returned an empty page.");
+      return { url: current.toString(), html };
+    } catch (error) {
+      lastError = error;
+      const left = deadline - Date.now();
+      if (left < 1000) break;
+      const message = error instanceof Error ? error.message : "";
+      if (!/fetch failed|aborted|timeout|Timeout|ECONN|socket|network/i.test(message)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1500, left)));
     }
-    if (!response.ok) throw new Error(`That site responded with status ${response.status}.`);
-    const type = response.headers.get("content-type") ?? "";
-    if (type && !/text\/html|application\/xhtml\+xml|text\/plain/i.test(type)) {
-      throw new Error("That address did not return a web page.");
-    }
-    const bytes = Buffer.from(await response.arrayBuffer());
-    const html = bytes.subarray(0, 500_000).toString("utf8");
-    if (!html.trim()) throw new Error("That site returned an empty page.");
-    return { url: current.toString(), html };
   }
-  throw new Error("That site redirected too many times.");
+  if (lastError instanceof Error) throw lastError;
+  throw new Error("That site did not respond in time.");
 }
 
 function decode(text: string): string {
@@ -663,7 +680,7 @@ async function logoSource(url: string): Promise<string | undefined> {
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": "Reimago-reimagine/1.0" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(30000),
       redirect: "follow",
     });
     if (!response.ok) return undefined;
@@ -760,7 +777,7 @@ export async function runReimagine(input: ReimagineInput): Promise<ReimagineResu
     await assertPublic(startUrl);
     let note: string | undefined;
     const template = chosenTemplate(input.template);
-    const cacheKey = `${startUrl.toString()}|${input.notes.toLowerCase()}|v8`;
+    const cacheKey = `${startUrl.toString()}|${input.notes.toLowerCase()}|v9`;
 
     let live = true;
     let finalUrl = startUrl.toString();
@@ -775,7 +792,7 @@ export async function runReimagine(input: ReimagineInput): Promise<ReimagineResu
     let story = { headline: "", action: "", image: "" };
 
     try {
-      const page = await fetchPage(startUrl, 8000);
+      const page = await fetchPage(startUrl, 30000);
       finalUrl = page.url;
       const main = extract(page.html);
       title = main.title;
@@ -802,7 +819,7 @@ export async function runReimagine(input: ReimagineInput): Promise<ReimagineResu
       const extra = sameHostLinks(page.html, new URL(page.url))[0];
       if (extra) {
         try {
-          const second = await fetchPage(extra, 6000);
+          const second = await fetchPage(extra, 30000);
           const more = extract(second.html);
           if (more.headings.length) headings = [...headings, ...more.headings].slice(0, 16);
           if (more.text) text = `${text}\n${more.text}`.slice(0, 7000);
@@ -924,6 +941,15 @@ export async function runReimagine(input: ReimagineInput): Promise<ReimagineResu
       diagnosis: shaped.diagnosis,
       honored: shaped.honored,
       draft: shaped.draft,
+      layout: {
+        submitted: input.url,
+        url: finalUrl,
+        title: title || host,
+        description,
+        nav: crawledNav.slice(0, 8),
+        headings: headings.slice(0, 16),
+        text: text.slice(0, 2500),
+      },
       note,
     };
     cache.set(cacheKey, { at: Date.now(), value });
@@ -934,5 +960,91 @@ export async function runReimagine(input: ReimagineInput): Promise<ReimagineResu
       return { ok: false, error: "That site did not respond in time. Check the address and try again." };
     }
     return { ok: false, error: message };
+  }
+}
+
+export type CursorHandoff = {
+  host: string;
+  submitted: string;
+  url: string;
+  title: string;
+  description: string;
+  nav: string[];
+  headings: string[];
+  text: string;
+  notes: string;
+  image: string;
+};
+
+function cursorPrompt(input: CursorHandoff): string {
+  const site = input.submitted || input.url || input.host;
+  return [
+    `Rebuild the website entered in the form: ${site}.`,
+    "That address is the only site. Do not switch to a different business.",
+    "Match the attached Imagine rendering for color, type, spacing, and the new look.",
+    "Keep the existing site's section order and navigation.",
+    input.title ? `Title: ${input.title}` : "",
+    input.description ? `Description: ${input.description}` : "",
+    input.nav.length ? `Navigation: ${input.nav.join(" · ")}` : "",
+    input.headings.length ? `Headings, in order:\n${input.headings.map((heading) => `- ${heading}`).join("\n")}` : "",
+    input.text ? `Page text:\n${input.text}` : "",
+    input.notes ? `Customer note: ${input.notes}` : "",
+    "Ship one static page that opens in a browser. Do not change the live site.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function cursorImage(image: string): { data: string; mimeType: string } | { url: string } | undefined {
+  const match = image.match(/^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\r\n]+)$/);
+  if (match) {
+    const data = match[2].replace(/\s/g, "");
+    if (data.length > 14_000_000) return undefined;
+    return { data, mimeType: match[1] };
+  }
+  if (image.startsWith("https://")) return { url: image };
+  return undefined;
+}
+
+export async function sendToCursor(
+  input: CursorHandoff,
+): Promise<{ ok: true; url: string } | { ok: false; error: string; deeplink: string }> {
+  const prompt = cursorPrompt(input);
+  const deeplink = `https://cursor.com/link/prompt?text=${encodeURIComponent(prompt.slice(0, 1800))}`;
+  const key = process.env.CURSOR_API_KEY?.trim();
+  const picture = cursorImage(input.image);
+  if (!key || !picture) {
+    return {
+      ok: false,
+      error: key
+        ? "The Imagine picture could not be attached."
+        : "Opened Cursor with the site from the form. The Imagine picture downloaded beside it.",
+      deeplink,
+    };
+  }
+  try {
+    const response = await fetch("https://api.cursor.com/v1/agents", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: `Reimago ${input.host || "site"}`.slice(0, 100),
+        prompt: { text: prompt, images: [picture] },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    const json = (await response.json().catch(() => null)) as {
+      agent?: { url?: string };
+      message?: string;
+    } | null;
+    const url = json?.agent?.url;
+    if (!response.ok || !url) {
+      return { ok: false, error: json?.message || "Cursor did not start.", deeplink };
+    }
+    return { ok: true, url };
+  } catch {
+    return { ok: false, error: "Cursor did not answer.", deeplink };
   }
 }

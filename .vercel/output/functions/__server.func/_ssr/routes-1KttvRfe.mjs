@@ -3,7 +3,7 @@ import { J as require_react, x as require_jsx_runtime, y as Link } from "../_lib
 import { n as Wordmark, t as SiteShell } from "./site-shell-BoqbKgQz.mjs";
 import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
 import { t as ArrowRight } from "../_libs/lucide-react.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-DgSVbPwK.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-1KttvRfe.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var createSsrRpc = (functionId) => {
@@ -115,6 +115,8 @@ async function submitFormcarry(fields) {
 }
 function HomePage() {
 	const [url, setUrl] = (0, import_react.useState)("");
+	const [intent, setIntent] = (0, import_react.useState)(null);
+	const [siteFocused, setSiteFocused] = (0, import_react.useState)(false);
 	const [email, setEmail] = (0, import_react.useState)("");
 	const [notes, setNotes] = (0, import_react.useState)("");
 	const [agreed, setAgreed] = (0, import_react.useState)(false);
@@ -150,8 +152,12 @@ function HomePage() {
 		event.preventDefault();
 		setError("");
 		const site = url.trim();
+		if (!intent) {
+			setError("Choose Reimagine My Website or Create a New Site.");
+			return;
+		}
 		if (!site || site === "https://" || site === "http://") {
-			setError("Enter the website you want reimagined.");
+			setError(intent === "reimagine" ? "Enter your site." : "Enter a site to emulate.");
 			return;
 		}
 		if (!isEmail(email.trim())) {
@@ -305,25 +311,43 @@ function HomePage() {
 					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "space-y-4",
 						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", {
+								className: "flex flex-col gap-2 sm:flex-row sm:gap-6",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+									className: "flex items-center gap-2.5 text-sm font-medium text-fg",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "checkbox",
+										checked: intent === "reimagine",
+										onChange: (event) => setIntent(event.target.checked ? "reimagine" : null),
+										className: "size-4 shrink-0 accent-primary"
+									}), "Reimagine My Website"]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+									className: "flex items-center gap-2.5 text-sm font-medium text-fg",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "checkbox",
+										checked: intent === "create",
+										onChange: (event) => setIntent(event.target.checked ? "create" : null),
+										className: "size-4 shrink-0 accent-primary"
+									}), "Create a New Site"]
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 								className: "block",
 								htmlFor: "site-url",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "text-sm font-medium text-fg",
-									children: "Enter your website or pick a domain for a new one"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 									id: "site-url",
 									name: "url",
 									value: url,
 									onChange: (event) => setUrl(event.target.value),
+									onFocus: () => setSiteFocused(true),
+									onBlur: () => setSiteFocused(false),
 									inputMode: "url",
 									autoCapitalize: "none",
 									autoCorrect: "off",
 									spellCheck: false,
-									required: true,
-									placeholder: "https://yourcompany.com",
-									className: fieldClass
-								})]
+									placeholder: siteFocused && intent === "create" ? "Enter a Site From the Web to Emulate your Business or Site" : siteFocused && intent === "reimagine" ? "Enter Your Site Here" : "https://www.site.com",
+									className: intent ? `${fieldClass} border-2 border-primary bg-bg ring-2 ring-primary/30 placeholder:text-primary` : fieldClass
+								})
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "grid gap-4 sm:grid-cols-2",
@@ -419,6 +443,7 @@ function HomePage() {
 								type: "button",
 								className: "text-sm text-muted underline-offset-4 hover:text-fg hover:underline",
 								onClick: () => {
+									setIntent("reimagine");
 									setUrl("https://reimago.ai");
 									setNotes("Retire the feature catalog. Make this a studio that reimagines a customer's website.");
 								},

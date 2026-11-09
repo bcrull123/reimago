@@ -46,3 +46,42 @@ export const retryRendition = createServerFn({ method: "POST" })
     if (!image) return { ok: false as const, error: "Imagine did not return a new rendering." };
     return { ok: true as const, image };
   });
+
+export const handOffToCursor = createServerFn({ method: "POST" })
+  .validator((input: {
+    host?: string;
+    submitted?: string;
+    url?: string;
+    title?: string;
+    description?: string;
+    nav?: string[];
+    headings?: string[];
+    text?: string;
+    notes?: string;
+    image?: string;
+  }) => {
+    const image = typeof input?.image === "string" ? input.image : "";
+    if (!image.startsWith("data:image/") && !image.startsWith("https://")) {
+      throw new Error("The Imagine picture is not ready.");
+    }
+    if (image.length > 12_000_000) throw new Error("The Imagine picture is too large to hand off.");
+    const clip = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
+    const list = (value: unknown, max: number) =>
+      Array.isArray(value) ? value.map((item) => String(item).trim().slice(0, 80)).filter(Boolean).slice(0, max) : [];
+    return {
+      host: clip(input?.host, 200),
+      submitted: clip(input?.submitted, 300),
+      url: clip(input?.url, 300),
+      title: clip(input?.title, 200),
+      description: clip(input?.description, 400),
+      nav: list(input?.nav, 8),
+      headings: list(input?.headings, 16),
+      text: clip(input?.text, 2500),
+      notes: clip(input?.notes, 800),
+      image,
+    };
+  })
+  .handler(async ({ data }) => {
+    const { sendToCursor } = await import("./reimagine.server");
+    return sendToCursor(data);
+  });

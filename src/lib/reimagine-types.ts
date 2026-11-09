@@ -33,6 +33,16 @@ export type SiteDraft = {
   change?: string;
 };
 
+export type ExistingLayout = {
+  submitted: string;
+  url: string;
+  title: string;
+  description: string;
+  nav: string[];
+  headings: string[];
+  text: string;
+};
+
 export type ReimagineOk = {
   ok: true;
   source: "grok" | "crawl";
@@ -44,6 +54,7 @@ export type ReimagineOk = {
   diagnosis: string;
   honored: string[];
   draft: SiteDraft;
+  layout?: ExistingLayout;
   note?: string;
   pageUrl?: string;
   mailed?: boolean;

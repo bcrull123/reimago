@@ -1,7 +1,7 @@
 import { i as getRequestIP$1 } from "./ssr.mjs";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-//#region node_modules/.nitro/vite/services/ssr/assets/reimagine.server-OPdHpk2o.js
+//#region node_modules/.nitro/vite/services/ssr/assets/reimagine.server-Cd_m2_Zg.js
 var TEMPLATES = /* @__PURE__ */ new Set([
 	"yours",
 	"organization",
@@ -107,36 +107,53 @@ function normalizeInput(raw) {
 	url.hostname = url.hostname.toLowerCase().replace(/\.$/, "");
 	return url;
 }
-async function fetchPage(start, timeoutMs) {
+async function fetchPage(start, timeoutMs = 3e4) {
+	const deadline = Date.now() + timeoutMs;
 	let current = start;
-	for (let hop = 0; hop < 4; hop += 1) {
+	let hops = 0;
+	let lastError;
+	while (Date.now() < deadline && hops < 4) {
+		const remaining = deadline - Date.now();
+		if (remaining < 250) break;
 		await assertPublic(current);
-		const response = await fetch(current, {
-			redirect: "manual",
-			signal: AbortSignal.timeout(timeoutMs),
-			headers: {
-				Accept: "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5",
-				"User-Agent": "ReimagoReimagine/1.0 (+https://reimago.ai)"
+		try {
+			const response = await fetch(current, {
+				redirect: "manual",
+				signal: AbortSignal.timeout(remaining),
+				headers: {
+					Accept: "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5",
+					"User-Agent": "ReimagoReimagine/1.0 (+https://reimago.ai)"
+				}
+			});
+			if (response.status >= 300 && response.status < 400) {
+				const location = response.headers.get("location");
+				if (!location) throw new Error("That site redirected without a destination.");
+				current = new URL(location, current);
+				current.hash = "";
+				hops += 1;
+				if (hops >= 4) throw new Error("That site redirected too many times.");
+				continue;
 			}
-		});
-		if (response.status >= 300 && response.status < 400) {
-			const location = response.headers.get("location");
-			if (!location) throw new Error("That site redirected without a destination.");
-			current = new URL(location, current);
-			current.hash = "";
-			continue;
+			if (!response.ok) throw new Error(`That site responded with status ${response.status}.`);
+			const type = response.headers.get("content-type") ?? "";
+			if (type && !/text\/html|application\/xhtml\+xml|text\/plain/i.test(type)) throw new Error("That address did not return a web page.");
+			const html = Buffer.from(await response.arrayBuffer()).subarray(0, 5e5).toString("utf8");
+			if (!html.trim()) throw new Error("That site returned an empty page.");
+			return {
+				url: current.toString(),
+				html
+			};
+		} catch (error) {
+			lastError = error;
+			const left = deadline - Date.now();
+			if (left < 1e3) break;
+			const message = error instanceof Error ? error.message : "";
+			if (!/fetch failed|aborted|timeout|Timeout|ECONN|socket|network/i.test(message)) throw error;
+			await new Promise((resolve) => setTimeout(resolve, Math.min(1500, left)));
 		}
-		if (!response.ok) throw new Error(`That site responded with status ${response.status}.`);
-		const type = response.headers.get("content-type") ?? "";
-		if (type && !/text\/html|application\/xhtml\+xml|text\/plain/i.test(type)) throw new Error("That address did not return a web page.");
-		const html = Buffer.from(await response.arrayBuffer()).subarray(0, 5e5).toString("utf8");
-		if (!html.trim()) throw new Error("That site returned an empty page.");
-		return {
-			url: current.toString(),
-			html
-		};
 	}
-	throw new Error("That site redirected too many times.");
+	if (lastError instanceof Error) throw lastError;
+	throw new Error("That site did not respond in time.");
 }
 function decode(text) {
 	return text.replace(/&nbsp;/gi, " ").replace(/&/gi, "&").replace(/"/gi, "\"").replace(/&#39;|'/gi, "'").replace(/</gi, "<").replace(/>/gi, ">").replace(/&#(\d+);/g, (_, n) => {
@@ -503,7 +520,7 @@ async function logoSource(url) {
 	try {
 		const response = await fetch(url, {
 			headers: { "User-Agent": "Reimago-reimagine/1.0" },
-			signal: AbortSignal.timeout(8e3),
+			signal: AbortSignal.timeout(3e4),
 			redirect: "follow"
 		});
 		if (!response.ok) return void 0;
@@ -611,7 +628,7 @@ async function runReimagine(input) {
 			image: ""
 		};
 		try {
-			const page = await fetchPage(startUrl, 8e3);
+			const page = await fetchPage(startUrl, 3e4);
 			finalUrl = page.url;
 			const main = extract(page.html);
 			title = main.title;
@@ -635,7 +652,7 @@ async function runReimagine(input) {
 			if (wordpress && /wp-includes|wordpress\.org|w-logo|wordpress-logo/i.test(logo)) logo = "";
 			const extra = sameHostLinks(page.html, new URL(page.url))[0];
 			if (extra) try {
-				const more = extract((await fetchPage(extra, 6e3)).html);
+				const more = extract((await fetchPage(extra, 3e4)).html);
 				if (more.headings.length) headings = [...headings, ...more.headings].slice(0, 16);
 				if (more.text) text = `${text}\n${more.text}`.slice(0, 7e3);
 			} catch {}

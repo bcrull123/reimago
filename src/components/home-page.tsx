@@ -101,11 +101,15 @@ async function submitFormcarry(fields: {
 
 export function HomePage() {
   const [url, setUrl] = useState("");
+  const [intent, setIntent] = useState<"reimagine" | "create" | null>(null);
+  const [siteFocused, setSiteFocused] = useState(false);
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [working, setWorking] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [handing, setHanding] = useState(false);
+  const [handoff, setHandoff] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<ReimagineOk | null>(null);
   const [mailed, setMailed] = useState<string>("");
@@ -138,8 +142,12 @@ export function HomePage() {
     event.preventDefault();
     setError("");
     const site = url.trim();
+    if (!intent) {
+      setError("Choose Reimagine My Website or Create a New Site.");
+      return;
+    }
     if (!site || site === "https://" || site === "http://") {
-      setError("Enter the website you want reimagined.");
+      setError(intent === "reimagine" ? "Enter your site." : "Enter a site to emulate.");
       return;
     }
     if (!isEmail(email.trim())) {
@@ -211,6 +219,61 @@ export function HomePage() {
     }
   }
 
+  function downloadBlob(blob: Blob, name: string) {
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(href);
+  }
+
+  async function handOff() {
+    if (!result?.draft.rendition) return;
+    const submitted = url.trim() || result.layout?.submitted || result.finalUrl;
+    const layout = {
+      submitted,
+      url: result.layout?.url || result.finalUrl,
+      title: result.layout?.title || result.foundTitle,
+      description: result.layout?.description || result.foundDescription,
+      nav: result.layout?.nav?.length ? result.layout.nav : result.draft.nav,
+      headings: result.layout?.headings ?? [],
+      text: result.layout?.text || result.diagnosis,
+    };
+    const domain = bareDomain(submitted);
+    setHanding(true);
+    setHandoff("");
+    try {
+      const file = await pictureFile(result.draft.rendition, domain);
+      const brief = [
+        "# Cursor handoff",
+        "",
+        "Open this folder in the Cursor you already use. Do not sign out of that account.",
+        "",
+        `Rebuild the website from the form: ${submitted}`,
+        `The Imagine picture is ${file.name}. Match that picture.`,
+        "Keep the navigation and section order below. Do not change the live site.",
+        "",
+        `Fetched page: ${layout.url}`,
+        layout.title ? `Title: ${layout.title}` : "",
+        layout.description ? `Description: ${layout.description}` : "",
+        layout.nav.length ? `Navigation: ${layout.nav.join(" · ")}` : "",
+        layout.headings.length ? `Headings:\n${layout.headings.map((heading) => `- ${heading}`).join("\n")}` : "",
+        notes.trim() ? `Customer note: ${notes.trim()}` : "",
+        layout.text ? `Page text:\n${layout.text}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      downloadBlob(file, file.name);
+      downloadBlob(new Blob([brief], { type: "text/markdown" }), `${domain}-cursor.md`);
+      setHandoff("Saved the form site’s layout and the Imagine picture. Open those two files in the Cursor you already use.");
+    } catch (err) {
+      setHandoff(err instanceof Error ? err.message : "The handoff could not be saved.");
+    } finally {
+      setHanding(false);
+    }
+  }
+
   async function copyBrief() {
     if (!result) return;
     const text = `${result.draft.name}\n${result.draft.headline}\n${result.draft.subhead}\n\n${result.diagnosis}`;
@@ -261,20 +324,50 @@ export function HomePage() {
           <div className="min-w-0">
             <form onSubmit={onSubmit} className="rounded-2xl border-2 border-primary bg-bg p-4 shadow-[0_18px_40px_-24px_rgba(0,104,232,0.85)] sm:p-6">
               <div className="space-y-4">
+                <fieldset className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+                  <label className="flex items-center gap-2.5 text-sm font-medium text-fg">
+                    <input
+                      type="checkbox"
+                      checked={intent === "reimagine"}
+                      onChange={(event) => setIntent(event.target.checked ? "reimagine" : null)}
+                      className="size-4 shrink-0 accent-primary"
+                    />
+                    Reimagine My Website
+                  </label>
+                  <label className="flex items-center gap-2.5 text-sm font-medium text-fg">
+                    <input
+                      type="checkbox"
+                      checked={intent === "create"}
+                      onChange={(event) => setIntent(event.target.checked ? "create" : null)}
+                      className="size-4 shrink-0 accent-primary"
+                    />
+                    Create a New Site
+                  </label>
+                </fieldset>
                 <label className="block" htmlFor="site-url">
-                  <span className="text-sm font-medium text-fg">Enter your website or pick a domain for a new one</span>
                   <input
                     id="site-url"
                     name="url"
                     value={url}
                     onChange={(event) => setUrl(event.target.value)}
+                    onFocus={() => setSiteFocused(true)}
+                    onBlur={() => setSiteFocused(false)}
                     inputMode="url"
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    required
-                    placeholder="https://yourcompany.com"
-                    className={fieldClass}
+                    placeholder={
+                      siteFocused && intent === "create"
+                        ? "Enter a Site From the Web to Emulate your Business or Site"
+                        : siteFocused && intent === "reimagine"
+                          ? "Enter Your Site Here"
+                          : "https://www.site.com"
+                    }
+                    className={
+                      intent
+                        ? `${fieldClass} border-2 border-primary bg-bg ring-2 ring-primary/30 placeholder:text-primary`
+                        : fieldClass
+                    }
                   />
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -352,6 +445,7 @@ export function HomePage() {
                   type="button"
                   className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline"
                   onClick={() => {
+                    setIntent("reimagine");
                     setUrl("https://reimago.ai");
                     setNotes(
                       "Retire the feature catalog. Make this a studio that reimagines a customer's website.",
@@ -381,14 +475,25 @@ export function HomePage() {
                   Imagine did not return a page. Try the site again.
                 </p>
               )}
-              <button
-                type="button"
-                onClick={() => void tryAgain()}
-                disabled={retrying}
-                className="mt-4 inline-flex h-12 items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium disabled:opacity-40"
-              >
-                Try Again
-              </button>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => void tryAgain()}
+                  disabled={retrying}
+                  className="inline-flex h-12 items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium disabled:opacity-40"
+                >
+                  Try Again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handOff()}
+                  disabled={handing || !result.draft.rendition}
+                  className="inline-flex h-12 items-center justify-center rounded-md bg-ink px-6 text-sm font-medium text-white disabled:opacity-40"
+                >
+                  {handing ? "Handing off…" : "Hand off to Cursor"}
+                </button>
+              </div>
+              {handoff ? <p className="mt-3 text-sm text-muted">{handoff}</p> : null}
             </div>
             <div className="mx-auto grid max-w-6xl gap-8 px-4 py-16 sm:px-6 lg:grid-cols-[16rem_1fr]">
               <aside>
