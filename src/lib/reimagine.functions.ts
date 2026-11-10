@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { ReimagineInput, ReimagineResult, SiteDraft } from "@/lib/reimagine-types";
+import type { DomainCheck } from "@/lib/logicboxes-types";
 
 export const reimagineSite = createServerFn({ method: "POST" })
   .validator((input: ReimagineInput) => {
@@ -84,4 +85,15 @@ export const handOffToCursor = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { sendToCursor } = await import("./reimagine.server");
     return sendToCursor(data);
+  });
+
+export const checkDomainName = createServerFn({ method: "POST" })
+  .validator((input: { name?: string }) => {
+    const name = typeof input?.name === "string" ? input.name.trim().slice(0, 80) : "";
+    if (!name) throw new Error("Enter a domain name, like northline.com.");
+    return { name };
+  })
+  .handler(async ({ data }): Promise<DomainCheck> => {
+    const { checkDomainAvailability } = await import("./logicboxes.server");
+    return checkDomainAvailability(data.name);
   });

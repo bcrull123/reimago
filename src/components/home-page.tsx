@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { SiteShell, Wordmark } from "@/components/site-shell";
-import { reimagineSite, retryRendition } from "@/lib/reimagine.functions";
+import { reimagineSite, retryRendition, checkDomainName } from "@/lib/reimagine.functions";
+import type { DomainOffer } from "@/lib/logicboxes-types";
 import type { ReimagineOk } from "@/lib/reimagine-types";
 
 const STORAGE_KEY = "reimago-reimagine-v2";
@@ -101,7 +102,7 @@ async function submitFormcarry(fields: {
 
 export function HomePage() {
   const [url, setUrl] = useState("");
-  const [intent, setIntent] = useState<"reimagine" | "create" | null>(null);
+  const [intent, setIntent] = useState<"reimagine" | "register" | "create" | null>(null);
   const [siteFocused, setSiteFocused] = useState(false);
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
@@ -113,6 +114,9 @@ export function HomePage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<ReimagineOk | null>(null);
   const [mailed, setMailed] = useState<string>("");
+  const [checkingName, setCheckingName] = useState(false);
+  const [offers, setOffers] = useState<DomainOffer[] | null>(null);
+  const [domainNote, setDomainNote] = useState("");
   const draftRef = useRef<HTMLElement>(null);
   const scrollOnResult = useRef(false);
 
@@ -138,16 +142,43 @@ export function HomePage() {
     draftRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [result]);
 
+  async function lookupDomain(nameInput?: string) {
+    setError("");
+    setOffers(null);
+    setDomainNote("");
+    const name = (nameInput ?? url).trim();
+    if (!name) {
+      setError("Enter your domain.");
+      return;
+    }
+    setCheckingName(true);
+    try {
+      const result = await checkDomainName({ data: { name } });
+      setOffers(result.offers);
+      setDomainNote(result.note);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The domain check did not answer.");
+    } finally {
+      setCheckingName(false);
+    }
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     const site = url.trim();
     if (!intent) {
-      setError("Choose Reimagine My Website or Create a New Site.");
+      setError("Choose Reimagine My Website, Register a Domain, or Create a New Site.");
       return;
     }
     if (!site || site === "https://" || site === "http://") {
-      setError(intent === "reimagine" ? "Enter your site." : "Enter a site to emulate.");
+      setError(
+        intent === "reimagine" ? "Enter your site." : intent === "register" ? "Enter your domain." : "Enter a site to emulate.",
+      );
+      return;
+    }
+    if (intent === "register") {
+      await lookupDomain(site);
       return;
     }
     if (!isEmail(email.trim())) {
@@ -337,6 +368,19 @@ export function HomePage() {
                   <label className="flex items-center gap-2.5 text-sm font-medium text-fg">
                     <input
                       type="checkbox"
+                      checked={intent === "register"}
+                      onChange={(event) => {
+                        setIntent(event.target.checked ? "register" : null);
+                        setOffers(null);
+                        setDomainNote("");
+                      }}
+                      className="size-4 shrink-0 accent-primary"
+                    />
+                    Register a Domain
+                  </label>
+                  <label className="flex items-center gap-2.5 text-sm font-medium text-fg">
+                    <input
+                      type="checkbox"
                       checked={intent === "create"}
                       onChange={(event) => setIntent(event.target.checked ? "create" : null)}
                       className="size-4 shrink-0 accent-primary"
@@ -349,7 +393,11 @@ export function HomePage() {
                     id="site-url"
                     name="url"
                     value={url}
-                    onChange={(event) => setUrl(event.target.value)}
+                    onChange={(event) => {
+                      setUrl(event.target.value);
+                      setOffers(null);
+                      setDomainNote("");
+                    }}
                     onFocus={() => setSiteFocused(true)}
                     onBlur={() => setSiteFocused(false)}
                     inputMode="url"
@@ -357,11 +405,13 @@ export function HomePage() {
                     autoCorrect="off"
                     spellCheck={false}
                     placeholder={
-                      siteFocused && intent === "create"
-                        ? "Enter a Site From the Web to Emulate your Business or Site"
-                        : siteFocused && intent === "reimagine"
-                          ? "Enter Your Site Here"
-                          : "https://www.site.com"
+                      intent === "register"
+                        ? "Enter your domain here. Let AI help you find a good one."
+                        : siteFocused && intent === "create"
+                          ? "Enter a Site From the Web to Emulate your Business or Site"
+                          : siteFocused && intent === "reimagine"
+                            ? "Enter Your Site Here"
+                            : "https://www.site.com"
                     }
                     className={
                       intent
@@ -370,6 +420,25 @@ export function HomePage() {
                     }
                   />
                 </label>
+                {intent === "register" && domainNote ? <p className="text-sm text-muted">{domainNote}</p> : null}
+                {intent === "register" && offers ? (
+                  <ul className="space-y-1 text-sm">
+                    {offers.map((offer) => (
+                      <li key={offer.domain} className="flex items-center justify-between gap-3">
+                        <span className="text-fg">{offer.domain}</span>
+                        <span className={offer.state === "available" ? "font-medium text-primary" : "text-muted"}>
+                          {offer.state === "available"
+                            ? "Available"
+                            : offer.state === "taken"
+                              ? "Taken"
+                              : offer.state === "premium"
+                                ? "Premium, not offered"
+                                : "Unknown"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="block" htmlFor="site-email">
                     <span className="text-sm font-medium text-fg">Email</span>
@@ -429,11 +498,11 @@ export function HomePage() {
                 </label>
                 <button
                   type="submit"
-                  disabled={working}
+                  disabled={working || checkingName}
                   className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-accent px-6 text-sm font-semibold text-ink transition-transform duration-150 ease-out hover:bg-accent/90 active:scale-[0.96] disabled:opacity-40 sm:w-auto"
                 >
-                  {working ? "Building the site…" : "Reimagine my site"}
-                  {working ? null : <ArrowRight className="size-4" aria-hidden />}
+                  {working ? "Building the site…" : checkingName ? "Checking…" : intent === "register" ? "Find a domain" : "Reimagine my site"}
+                  {working || checkingName ? null : <ArrowRight className="size-4" aria-hidden />}
                 </button>
                 {error ? (
                   <p className="text-sm text-danger" role="alert">
